@@ -13,7 +13,7 @@ st.set_page_config(
 
 # Main app title
 st.title("AI Solutions Explorer")
-st.markdown("Developed by [Your Name] ([Your Index Number])")
+st.markdown("Developed by Michelle Naa Kwarley Owoo (10211100296)")
 
 # Create a sidebar for navigation
 st.sidebar.title("Navigation")
