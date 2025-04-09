@@ -29,7 +29,7 @@ This Streamlit application allows users to explore and solve diverse machine lea
 - Make predictions with trained models
 
 ### 4. Large Language Models (RAG Implementation)
-- Question answering on Ghana Election Results data
+- Question answering on Information Extracted from Academic City Handbook
 - Retrieval-Augmented Generation architecture
 - Context-aware responses
 - Comparison with ChatGPT 
