@@ -3,12 +3,13 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
+
+
 
 # Import utility modules
-from utils.regression import preprocess_data, train_regression_model, evaluate_regression_model, plot_regression_results
-from utils.clustering import preprocess_clustering_data, perform_kmeans, plot_clusters
-from utils.neural_network import preprocess_nn_data, create_model, plot_confusion_matrix
-from utils.llm import load_election_data, initialize_rag_pipeline, process_query, generate_response
+from utils.llm import extract_text_from_pdf, split_text, create_vector_store, get_retriever, rag_pipeline
+
 
 # Set page configuration
 st.set_page_config(
@@ -393,9 +394,9 @@ elif page == "Neural Network":
                 st.write("### Make Custom Predictions")
                 
                 input_data = {}
-                for i, feature in enumerate(feature_columns):
-                    min_val = float(X[:, i].min())
-                    max_val = float(X[:, i].max())
+                for feature in feature_columns:
+                    min_val = float(X[feature].min())
+                    max_val = float(X[feature].max())
                     input_data[feature] = st.slider(f"Select value for {feature}", min_val, max_val, (min_val + max_val) / 2)
                 
                 input_array = np.array([[input_data[feature] for feature in feature_columns]])
@@ -420,207 +421,87 @@ elif page == "Neural Network":
 elif page == "LLM Solution":
     st.header("Large Language Model Q&A")
     
-    # Architecture explanation
+    # Architecture explanation with custom diagram
     with st.expander("LLM Architecture"):
-        st.write("""
-        ### RAG (Retrieval-Augmented Generation) Architecture
+        st.markdown("""
+         ### RAG (Retrieval-Augmented Generation) Architecture for Student Handbook
+
+            This solution uses a RAG pipeline to answer questions from the Acity Student Handbook:
+
+         1. **Document Loading**: Load and extract text from the handbook PDF.
+         2. **Text Chunking**: Split the extracted text into overlapping chunks (~500 tokens).
+         3. **Embedding Generation**: Convert each chunk into vector embeddings with `HuggingFaceEmbeddings`.
+         4. **Vector Storage**: Store embeddings in a FAISS index for fast similarity search.
+         5. **Query Embedding**: Embed the user’s question.
+         6. **Similarity Search**: Retrieve the top‑k most relevant chunks.
+         7. **Prompt Assembly**: Combine retrieved chunks + question into a prompt.
+         8. **LLM Generation**: Generate the answer using Mistral‑7B‑Instruct, constrained to the retrieved context.
+         """)
         
-        This solution uses a RAG architecture, which combines retrieval-based and generative approaches:
-        
-        1. **Document Loading**: The Ghana Election Result dataset is loaded and processed.
-        2. **Text Chunking**: The document is split into manageable chunks for embedding.
-        3. **Embedding Generation**: Each chunk is transformed into vector embeddings.
-        4. **Vector Storage**: Embeddings are stored in a vector database for efficient retrieval.
-        5. **Query Processing**: User questions are converted into embeddings.
-        6. **Similarity Search**: The system finds relevant chunks based on embedding similarity.
-        7. **Context Assembly**: Relevant chunks are combined to form a context.
-        8. **LLM Generation**: The LLM (Mistral-7B) generates an answer based on the context and question.
-        
-        This approach enhances the model's ability to provide accurate, data-specific answers while maintaining the flexibility of generative models.
-        """)
-        
-        # Add a simple architecture diagram
-        st.image("https://miro.medium.com/v2/resize:fit:1400/format:webp/1*u1aVUMH0wY0o2CQFnSaxNQ.png", 
-                 caption="RAG Architecture Diagram")
+        # Add the custom architecture diagram
+        st.image("rag_architecture.png", caption="RAG Architecture for Student Handbook Q&A")
     
     # Methodology explanation
     with st.expander("Methodology"):
-        st.write("""
-        ### Methodology: RAG with Ghana Election Results Dataset
-        
-        #### 1. Data Preparation
-        - **Dataset Selection**: Ghana Election Results dataset contains structured information about election outcomes.
-        - **Data Cleaning**: Remove irrelevant columns, handle missing values, and normalize data formats.
-        - **Data Transformation**: Convert structured data into a format suitable for text embedding.
-        
-        #### 2. Embedding and Indexing
-        - **Embedding Model**: Utilize a sentence transformer model to create dense vector representations.
-        - **Chunking Strategy**: Split data into meaningful chunks that maintain context about specific elections or regions.
-        - **Vector Database**: Store embeddings in FAISS for efficient similarity search.
-        
-        #### 3. Retrieval Mechanism
-        - **Query Processing**: Transform user questions into the same embedding space.
-        - **Similarity Metric**: Use cosine similarity to find the most relevant chunks.
-        - **Ranking**: Prioritize chunks based on relevance scores.
-        - **Context Window Management**: Select top chunks while respecting the LLM's context window limits.
-        
-        #### 4. Generation with Mistral-7B
-        - **Model Selection**: Mistral-7B-Instruct-v0.1 offers a good balance of performance and resource requirements.
-        - **Prompt Engineering**: Create effective prompts that combine the question with retrieved context.
-        - **Parameter Tuning**: Adjust temperature, top_p, and max_tokens for optimal responses.
-        - **Response Formatting**: Ensure answers are well-structured and directly address the user's question.
-        
-        #### 5. Evaluation Framework
-        - **Accuracy**: Measure factual correctness against the source data.
-        - **Relevance**: Assess how well responses address the specific question.
-        - **Comparison**: Benchmark against ChatGPT responses for the same questions.
+        st.markdown("""
+         ### Methodology: RAG Pipeline with Acity Student Handbook
+
+        #### 1. Text Extraction
+        - Extract raw text from the PDF using `extract_text_from_pdf()`.
+
+        #### 2. Text Chunking
+        - Split the text into overlapping ~500 token chunks using `RecursiveCharacterTextSplitter` to retain context.
+
+        #### 3. Embedding & Indexing
+        - Convert chunks into embeddings using `HuggingFaceEmbeddings`.
+        - Store these embeddings in a FAISS index via `create_vector_store()`.
+
+        #### 4. Retrieval
+        - Embed the user's query and retrieve top-k relevant chunks using `get_retriever()`.
+
+        #### 5. Prompt Construction & Generation
+        - Assemble a prompt with the query and relevant chunks.
+        - Generate answer via `rag_pipeline()` using the Mistral-7B-Instruct model.
+                    
         """)
+        
+        
+   # Get file path
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    pdf_path = os.path.join(script_dir, "data", "handbook.pdf")
     
-    # Load the Ghana Election Results dataset
-    @st.cache_data
-    def load_election_data():
-        try:
-            # First try to load from GitHub
-            df = pd.read_csv("https://raw.githubusercontent.com/GodwinDansoAcity/acitydataset/main/Ghana_Election_Result.csv")
-            return df
-        except:
-            # Fallback to a local file if needed
-            st.warning("Could not load from GitHub. Please upload the Ghana Election Result dataset.")
-            return None
+    # Check if file exists
+    if not os.path.exists(pdf_path):
+        st.error(f"PDF not found at path: {pdf_path}")
+        st.write("Current working directory: " + os.getcwd())
+        st.stop()
     
-    election_data = load_election_data()
+    # Initialization (should use caching or session state)
+    if 'vector_store' not in st.session_state:
+        with st.spinner("Loading student handbook... This may take a minute"):
+            handbook_text = extract_text_from_pdf(pdf_path)
+            chunks = split_text(handbook_text)
+            st.session_state.vector_store = create_vector_store(chunks)
+            st.session_state.retriever = get_retriever(st.session_state.vector_store)
     
-    if election_data is not None:
-        st.write("### Ghana Election Results Dataset Loaded")
-        with st.expander("View Dataset"):
-            st.dataframe(election_data)
-        
-        # LLM setup
-        st.write("### LLM Question & Answer")
-        
-        # Since we can't run a full Mistral-7B model in Streamlit directly,
-        # we'll simulate the RAG process for demonstration purposes
-        
-        @st.cache_resource
-        def initialize_rag_pipeline():
-            try:
-                from sentence_transformers import SentenceTransformer
-                import faiss
-                
-                # Convert dataframe to text chunks
-                texts = []
-                for _, row in election_data.iterrows():
-                    text = f"In {row.get('Year', 'N/A')}, in the {row.get('Region', 'N/A')} region of Ghana, "
-                    text += f"constituency {row.get('Constituency', 'N/A')}, "
-                    text += f"the presidential election results were: "
-                    
-                    for column in election_data.columns:
-                        if 'party' in column.lower() or 'candidate' in column.lower():
-                            text += f"{column}: {row.get(column, 'N/A')}, "
-                    
-                    texts.append(text.strip(", "))
-                
-                # Use a smaller model for embedding to save resources
-                model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
-                embeddings = model.encode(texts)
-                
-                # Create FAISS index
-                dimension = embeddings.shape[1]
-                index = faiss.IndexFlatL2(dimension)
-                index.add(embeddings)
-                
-                return {
-                    "model": model,
-                    "index": index,
-                    "texts": texts
-                }
-            except Exception as e:
-                st.error(f"Error initializing RAG pipeline: {e}")
-                return None
-        
-        rag_pipeline = initialize_rag_pipeline()
-        
-        # Query input
-        user_query = st.text_input("Ask a question about Ghana election results:", 
-                                   "Which party won the presidential election in Ashanti region in recent years?")
-        
-        if st.button("Get Answer"):
-            if rag_pipeline:
-                # Embed the query
-                query_embedding = rag_pipeline["model"].encode([user_query])
-                
-                # Search for similar chunks
-                k = 3  # Number of chunks to retrieve
-                distances, indices = rag_pipeline["index"].search(query_embedding, k)
-                
-                # Get the retrieved texts
-                retrieved_chunks = [rag_pipeline["texts"][i] for i in indices[0]]
-                
-                # Display retrieved context
-                with st.expander("Retrieved Context"):
-                    for i, chunk in enumerate(retrieved_chunks):
-                        st.write(f"**Chunk {i+1}** (Relevance Score: {1/(1+distances[0][i]):.2f})")
-                        st.write(chunk)
-                
-                # In a real implementation, we would pass this to Mistral-7B
-                # For demonstration, we'll use a simulated response
-                
-                # Simulate an LLM response based on the retrieved context
-                if "ashanti" in user_query.lower() and "presidential" in user_query.lower():
-                    response = """
-                    Based on the retrieved information from the Ghana Election Results dataset, the New Patriotic Party (NPP) 
-                    has traditionally been strong in the Ashanti region in recent elections. This region is considered an NPP 
-                    stronghold, with the party consistently winning the presidential votes there by significant margins.
-                    
-                    In the most recent elections covered by the dataset, the NPP presidential candidate received the majority 
-                    of votes across most constituencies in the Ashanti region. The specific percentages varied by constituency, 
-                    but the overall trend shows NPP dominance in this region.
-                    
-                    If you'd like specific numbers for particular constituencies or election years, please ask a more specific question.
-                    """
-                elif "party" in user_query.lower() and "won" in user_query.lower():
-                    response = """
-                    Based on the retrieved information from the Ghana Election Results dataset, election outcomes varied by region and year.
-                    
-                    The two dominant parties in Ghana's elections have been the New Patriotic Party (NPP) and the National Democratic Congress (NDC).
-                    The NPP has traditionally been stronger in regions like Ashanti and Eastern, while the NDC has had stronger support in regions
-                    like Volta and Northern.
-                    
-                    Without more specific information about which region and year you're interested in, I can't provide detailed results.
-                    Please specify a particular region and/or election year for more precise information.
-                    """
-                else:
-                    response = """
-                    Based on the retrieved context from the Ghana Election Results dataset, I don't have enough specific information to
-                    fully answer your question. The dataset contains information about election results across different regions,
-                    constituencies, and years in Ghana, including vote counts and percentages for different political parties.
-                    
-                    To provide a more accurate answer, please ask about specific regions, constituencies, election years, or parties.
-                    For example, you might ask about which party won in a particular constituency in a given year.
-                    """
-                
-                st.write("### Answer:")
-                st.write(response)
-                
-                # Compare with ChatGPT (simulated)
-                with st.expander("Comparison with ChatGPT"):
-                    st.write("""
-                    **ChatGPT Response:**
-                    
-                    I don't have specific, up-to-date information about Ghana's election results, especially for recent elections. Ghana has had several elections, with the New Patriotic Party (NPP) and the National Democratic Congress (NDC) being the major political parties.
-                    
-                    The Ashanti Region has historically been considered a stronghold for the NPP, but without access to specific election data, I cannot provide precise information about which party won in recent elections in this region. For accurate and up-to-date information, I would recommend checking official election commission data or reliable news sources that cover Ghanaian politics.
-                    
-                    **Comparison Analysis:**
-                    
-                    1. **Knowledge Access**: Our RAG implementation has direct access to the Ghana Election Results dataset, allowing it to provide more specific information than ChatGPT, which acknowledges its limited knowledge on this topic.
-                    
-                    2. **Specificity**: Our system can retrieve specific information about voting patterns in the Ashanti region, while ChatGPT can only offer general information about the region being an NPP stronghold.
-                    
-                    3. **Confidence**: ChatGPT appropriately expresses uncertainty and suggests external verification, while our system can make more definitive statements based on the data it has access to.
-                    
-                    4. **Contextual Understanding**: Both systems correctly identify the NPP's traditionally strong position in the Ashanti region, showing good topical understanding.
-                    """)
-            else:
-                st.error("RAG pipeline not initialized correctly. Please check the logs.")
-    st.header("Large Language Model Q&A")
+    # User input
+    query = st.text_input("Ask a question about student policies:")
+    
+    if query:
+        with st.spinner("Searching handbook and generating answer..."):
+             response_mistral = rag_pipeline(query, st.session_state.retriever)
+            
+            # Extract just the response part (removing the instruction prompt)
+        if "[/INST]" in response_mistral:
+            response_mistral = response_mistral.split("[/INST]")[1].strip()
+            if response_mistral.startswith("</s>"):
+                response_mistral = response_mistral.replace("</s>", "", 1).strip()
+
+        st.write("### Mistral (Custom RAG) Response")
+        st.success(response_mistral)
+
+        st.divider()
+
+
+
+           
