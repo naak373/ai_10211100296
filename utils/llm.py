@@ -72,7 +72,10 @@ def rag_pipeline(query, retriever):
     
     # Create a prompt that includes context
     prompt = f"""<s>[INST] You are an Academic City University assistant tasked with answering questions about the student handbook. 
-    Answer the question based ONLY on the following context:
+    -You adapt your response based on the user's question.
+    - If the question asks for a summary, respond briefly.
+    - If the question asks for details or an explanation, elaborate clearly.
+
     
     Context:
     {context}

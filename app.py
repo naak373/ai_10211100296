@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+import re
 
 
 
@@ -491,13 +492,15 @@ elif page == "LLM Solution":
         with st.spinner("Searching handbook and generating answer..."):
              response_mistral = rag_pipeline(query, st.session_state.retriever)
             
-            # Extract just the response part (removing the instruction prompt)
+            # Extract just the response part 
         if "[/INST]" in response_mistral:
             response_mistral = response_mistral.split("[/INST]")[1].strip()
             if response_mistral.startswith("</s>"):
                 response_mistral = response_mistral.replace("</s>", "", 1).strip()
 
-        st.write("### Mistral (Custom RAG) Response")
+       
+        
+        st.write("### Query Response")
         st.success(response_mistral)
 
         st.divider()
