@@ -49,7 +49,7 @@ def get_retriever(vector_store):
 # Query Mistral API
 def query_mistral(prompt):
     API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1"
-    headers = {"Authorization": "Bearer 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"}
+    headers = {"Authorization": "Bearer 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"}
     
     payload = {
         "inputs": prompt,

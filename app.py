@@ -5,11 +5,20 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 import re
+import seaborn as sns
+
 
 
 
 # Import utility modules
 from utils.llm import extract_text_from_pdf, split_text, create_vector_store, get_retriever, rag_pipeline
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import confusion_matrix
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
 
 
 # Set page configuration
@@ -219,87 +228,82 @@ elif page == "Clustering":
             st.warning("Please select at least two features for clustering.")
     st.header("Clustering Analysis")
 
-#Neural Network Section
+# Neural Network Section
 elif page == "Neural Network":
     st.header("Neural Network Training")
-    
-    # File uploader for neural network data
+
+    # File uploader
     uploaded_file = st.file_uploader("Upload CSV file for neural network training", type="csv")
-    
+
     if uploaded_file is not None:
-        # Load and preview data
         df = pd.read_csv(uploaded_file)
         st.write("### Data Preview")
         st.dataframe(df.head())
-        
-        # Column selection
-        st.write("### Feature Selection")
+
+        # Select columns
         target_column = st.selectbox("Select the target variable", df.columns)
-        feature_columns = st.multiselect("Select the feature variables", 
-                                        [col for col in df.columns if col != target_column],
-                                        default=[col for col in df.columns if col != target_column])
-        
+        feature_columns = st.multiselect(
+            "Select feature variables",
+            [col for col in df.columns if col != target_column],
+            default=[col for col in df.columns if col != target_column]
+        )
+
         if feature_columns and target_column:
-            import tensorflow as tf
-            from tensorflow.keras.models import Sequential
-            from tensorflow.keras.layers import Dense
-            from sklearn.preprocessing import StandardScaler, LabelEncoder
-            from sklearn.model_selection import train_test_split
-            
             # Preprocessing
             X = df[feature_columns].copy()
             y = df[target_column].copy()
-            
-            # Check if target is categorical
-            is_classification = y.dtype == 'object' or len(y.unique()) < 10
-            
+
+            # Identify classification task
+            is_classification = y.dtype == 'object' or len(np.unique(y)) < 10
+
             # Handle missing values
             for col in X.columns:
                 if X[col].dtype in ['float64', 'int64']:
                     X[col] = X[col].fillna(X[col].mean())
                 else:
                     X[col] = X[col].fillna(X[col].mode()[0])
-            
-            # Encode categorical features
+
+            # Store original categorical values
+            categorical_maps = {}
             for col in X.columns:
                 if X[col].dtype == 'object':
-                    X[col] = LabelEncoder().fit_transform(X[col])
-            
-            # Scale features
-            X_scaled = StandardScaler().fit_transform(X)
-            
-            # Handle target variable
+                    le = LabelEncoder()
+                    X[col] = le.fit_transform(X[col])
+                    categorical_maps[col] = le.classes_
+
+            # Scale
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X)
+
+            # Encode target
+            le = None
+            n_classes = None
             if is_classification:
                 le = LabelEncoder()
                 y = le.fit_transform(y)
                 n_classes = len(np.unique(y))
-                # Convert to one-hot encoding if more than 2 classes
                 if n_classes > 2:
                     y = tf.keras.utils.to_categorical(y)
-            
-            # Split data
-            if is_classification and n_classes > 2:
-                X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
-            else:
-                X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
-            
-            # Model parameters
+
+            # Split
+            X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+            # Model config
             st.write("### Model Configuration")
             col1, col2 = st.columns(2)
             with col1:
-                epochs = st.slider("Number of epochs", 10, 100, 50)
+                epochs = st.slider("Epochs", 10, 100, 50)
                 batch_size = st.slider("Batch size", 4, 128, 32)
             with col2:
                 learning_rate = st.select_slider("Learning rate", options=[0.001, 0.01, 0.1], value=0.01)
-                hidden_layers = st.slider("Number of hidden layers", 1, 5, 2)
-            
-            # Create model
+                hidden_layers = st.slider("Hidden layers", 1, 5, 2)
+
+            # Build model
             model = Sequential()
             model.add(Dense(64, activation='relu', input_shape=(X_train.shape[1],)))
-            
-            for _ in range(hidden_layers-1):
+            for _ in range(hidden_layers - 1):
                 model.add(Dense(32, activation='relu'))
-            
+
             if is_classification:
                 if n_classes == 2:
                     model.add(Dense(1, activation='sigmoid'))
@@ -313,37 +317,29 @@ elif page == "Neural Network":
                 model.add(Dense(1))
                 loss = 'mse'
                 metrics = ['mae']
-            
+
             model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
-                          loss=loss,
-                          metrics=metrics)
-            
-            # Train button
+                          loss=loss, metrics=metrics)
+
+            # Train model
             if st.button("Train Model"):
                 st.write("### Training Progress")
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-                
-                # Create placeholders for loss and metric charts
                 loss_chart = st.line_chart()
                 metric_chart = st.line_chart()
-                
-                # Custom callback to update Streamlit
+
                 class StreamlitCallback(tf.keras.callbacks.Callback):
                     def on_epoch_end(self, epoch, logs=None):
                         progress = (epoch + 1) / epochs
                         progress_bar.progress(progress)
                         status_text.text(f"Epoch {epoch+1}/{epochs}")
-                        
-                        # Update charts
-                        loss_chart.add_rows({'loss': logs['loss'], 'val_loss': logs['val_loss']})
-                        
+                        loss_chart.add_rows({'loss': [logs['loss']], 'val_loss': [logs['val_loss']]})
                         if 'accuracy' in logs:
-                            metric_chart.add_rows({'accuracy': logs['accuracy'], 'val_accuracy': logs['val_accuracy']})
+                            metric_chart.add_rows({'accuracy': [logs['accuracy']], 'val_accuracy': [logs['val_accuracy']]})
                         elif 'mae' in logs:
-                            metric_chart.add_rows({'mae': logs['mae'], 'val_mae': logs['val_mae']})
-                
-                # Train model
+                            metric_chart.add_rows({'mae': [logs['mae']], 'val_mae': [logs['val_mae']]})
+
                 history = model.fit(
                     X_train, y_train,
                     validation_data=(X_test, y_test),
@@ -352,70 +348,66 @@ elif page == "Neural Network":
                     callbacks=[StreamlitCallback()],
                     verbose=0
                 )
-                
-                # Evaluate model
+
                 st.write("### Model Evaluation")
                 test_results = model.evaluate(X_test, y_test, verbose=0)
-                
+
                 if is_classification:
                     st.metric("Test Accuracy", f"{test_results[1]:.4f}")
-                    
-                    # Make predictions for confusion matrix
                     if n_classes == 2:
                         y_pred = (model.predict(X_test) > 0.5).astype(int)
                         y_true = y_test
                     else:
                         y_pred = np.argmax(model.predict(X_test), axis=1)
                         y_true = np.argmax(y_test, axis=1)
-                    
-                    from sklearn.metrics import confusion_matrix
+
                     cm = confusion_matrix(y_true, y_pred)
-                    
                     fig, ax = plt.subplots(figsize=(8, 6))
                     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
-                    ax.set_xlabel('Predicted labels')
-                    ax.set_ylabel('True labels')
-                    ax.set_title('Confusion Matrix')
+                    ax.set_xlabel('Predicted')
+                    ax.set_ylabel('Actual')
                     st.pyplot(fig)
                 else:
-                    st.metric("Test Mean Absolute Error", f"{test_results[1]:.4f}")
-                    
-                    # Plot predictions vs actual
+                    st.metric("Test MAE", f"{test_results[1]:.4f}")
                     y_pred = model.predict(X_test).flatten()
-                    
                     fig, ax = plt.subplots(figsize=(10, 6))
                     ax.scatter(y_test, y_pred)
                     ax.plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], 'k--')
-                    ax.set_xlabel('Actual values')
-                    ax.set_ylabel('Predicted values')
-                    ax.set_title('Actual vs Predicted')
+                    ax.set_xlabel("Actual")
+                    ax.set_ylabel("Predicted")
+                    ax.set_title("Actual vs Predicted")
                     st.pyplot(fig)
-                
-                # Custom prediction interface
+
+                # Custom Predictions
                 st.write("### Make Custom Predictions")
-                
                 input_data = {}
-                for feature in feature_columns:
-                    min_val = float(X[feature].min())
-                    max_val = float(X[feature].max())
-                    input_data[feature] = st.slider(f"Select value for {feature}", min_val, max_val, (min_val + max_val) / 2)
-                
-                input_array = np.array([[input_data[feature] for feature in feature_columns]])
-                input_scaled = StandardScaler().fit(X).transform(input_array)
-                
-                prediction = model.predict(input_scaled)[0]
-                
+                for col in feature_columns:
+                    if col in categorical_maps:
+                        input_data[col] = st.selectbox(f"Select value for {col}", categorical_maps[col])
+                        input_val = np.where(categorical_maps[col] == input_data[col])[0][0]
+                    else:
+                        min_val = float(df[col].min())
+                        max_val = float(df[col].max())
+                        input_val = st.slider(f"Select value for {col}", min_val, max_val, (min_val + max_val) / 2)
+                    input_data[col] = input_val
+
+                input_array = np.array([[input_data[col] for col in feature_columns]])
+                input_scaled = scaler.transform(input_array)
+                prediction = model.predict(input_scaled)
+
                 if is_classification:
                     if n_classes == 2:
                         pred_class = "Class 1" if prediction[0] > 0.5 else "Class 0"
-                        pred_prob = prediction[0] if prediction[0] > 0.5 else 1 - prediction[0]
-                        st.success(f"Predicted Class: {pred_class} (Probability: {pred_prob:.4f})")
+                        pred_prob = prediction[0][0] if prediction[0] > 0.5 else 1 - prediction[0][0]
+                        st.success(f"Predicted: {pred_class} (Probability: {pred_prob:.4f})")
                     else:
-                        pred_class = le.inverse_transform([np.argmax(prediction)])[0]
-                        st.success(f"Predicted Class: {pred_class} (Probability: {np.max(prediction):.4f})")
+                        pred_idx = np.argmax(prediction)
+                        pred_label = le.inverse_transform([pred_idx])[0]
+                        st.success(f"Predicted Class: {pred_label} (Confidence: {np.max(prediction):.4f})")
                 else:
-                    st.success(f"Predicted Value: {prediction[0]:.4f}")
-    st.header("Neural Network Training")
+                    st.success(f"Predicted Value: {prediction[0][0]:.4f}")
+
+        st.divider()
 
 
 # LLM section
