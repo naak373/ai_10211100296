@@ -3,8 +3,8 @@ import pypdf
 import os
 import requests
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import FAISS
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
 
 # Define the path relative to the script's location
 script_dir = os.path.dirname(os.path.abspath(__file__))
