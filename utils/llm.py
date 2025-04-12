@@ -3,7 +3,7 @@ import pypdf
 import os
 import requests
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceInstructEmbeddings
 from langchain_community.vectorstores import FAISS
 
 # Define the path relative to the script's location
@@ -31,10 +31,9 @@ def split_text(text):
 
 # Create vector store
 def create_vector_store(chunks):
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
+    embeddings = HuggingFaceInstructEmbeddings(
+        model_name="hkunlp/instructor-base"
     )
-    
     vector_store = FAISS.from_texts(chunks, embeddings)
     return vector_store
 
