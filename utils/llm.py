@@ -1,10 +1,11 @@
 import streamlit as st
 import pypdf
 import os
+import faiss
+import numpy as np
 import requests
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceInstructEmbeddings
-from langchain_community.vectorstores import FAISS
+from transformers import AutoTokenizer, AutoModel
+from sklearn.preprocessing import normalize
 
 # Define the path relative to the script's location
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -20,30 +21,49 @@ def extract_text_from_pdf(pdf_path):
     return text
 
 # Split text into chunks
-def split_text(text):
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
-        separators=["\n\n", "\n", " ", ""]
-    )
-    chunks = text_splitter.split_text(text)
+def split_text(text, chunk_size=500, overlap=50):
+    words = text.split()
+    chunks = []
+    for i in range(0, len(words), chunk_size - overlap):
+        chunk = " ".join(words[i:i + chunk_size])
+        chunks.append(chunk)
     return chunks
+
+
+#Embedding with HuggingFace model
+@st.cache_resource
+def load_embedding_model():
+    tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+    model = AutoModel.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
+    return tokenizer, model
+
+def embed_text(texts, tokenizer, model):
+    import torch
+    encoded_input = tokenizer(texts, padding=True, truncation=True, return_tensors="pt")
+    with torch.no_grad():
+        model_output = model(**encoded_input)
+    embeddings = model_output.last_hidden_state.mean(dim=1).numpy()
+    return normalize(embeddings)
+
+
 
 # Create vector store
 def create_vector_store(chunks):
-    embeddings = HuggingFaceInstructEmbeddings(
-        model_name="hkunlp/instructor-base"
-    )
-    vector_store = FAISS.from_texts(chunks, embeddings)
-    return vector_store
+    tokenizer, model = load_embedding_model()
+    embeddings = embed_text(chunks, tokenizer, model)
+    dim = embeddings.shape[1]
+    index = faiss.IndexFlatL2(dim)
+    index.add(embeddings)
+    return {"index": index, "texts": chunks, "model": model, "tokenizer": tokenizer}
 
 # Set up retriever
-def get_retriever(vector_store):
-    retriever = vector_store.as_retriever(
-        search_type="similarity",
-        search_kwargs={"k": 3}  # Return top 3 most relevant chunks
-    )
-    return retriever
+def get_top_k(query, vector_store, k=3):
+    tokenizer = vector_store["tokenizer"]
+    model = vector_store["model"]
+    q_embed = embed_text([query], tokenizer, model)
+    D, I = vector_store["index"].search(q_embed, k)
+    results = [vector_store["texts"][i] for i in I[0]]
+    return results
 
 # Query Mistral API
 def query_mistral(prompt):
@@ -62,12 +82,13 @@ def query_mistral(prompt):
         return f"Error: {response.text}"
 
 # RAG pipeline
-def rag_pipeline(query, retriever):
+def rag_pipeline(query, vector_store):
+
     # Retrieve relevant chunks
-    retrieved_docs = retriever.get_relevant_documents(query)
+    chunks = get_top_k(query, vector_store)
     
     # Prepare context
-    context = "\n\n".join([doc.page_content for doc in retrieved_docs])
+    context = "\n\n".join(chunks)
     
     # Create a prompt that includes context
     prompt = f"""<s>[INST] You are an Academic City University assistant tasked with answering questions about the student handbook. 

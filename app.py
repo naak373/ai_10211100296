@@ -138,8 +138,7 @@ elif page == "Regression":
             prediction = model.predict(input_df)[0]
             
             st.success(f"Predicted {target_column}: {prediction:.4f}")
-    st.header("Regression Analysis")
-
+    st.divider()
 # Clustering Section
 elif page == "Clustering":
     st.header("K-Means Clustering Analysis")
@@ -228,7 +227,7 @@ elif page == "Clustering":
                     st.dataframe(cluster_stats)
         else:
             st.warning("Please select at least two features for clustering.")
-    st.header("Clustering Analysis")
+    st.divider()
 
 # Neural Network Section
 elif page == "Neural Network":
@@ -451,89 +450,79 @@ elif page == "Neural Network":
 # LLM section
 elif page == "LLM Solution":
     st.header("Large Language Model Q&A")
-    
+
     # Architecture explanation with custom diagram
     with st.expander("LLM Architecture"):
         st.markdown("""
-         ### RAG (Retrieval-Augmented Generation) Architecture for Student Handbook
+        ### RAG (Retrieval-Augmented Generation) Architecture for Student Handbook
 
-            This solution uses a RAG pipeline to answer questions from the Acity Student Handbook:
+        This solution uses a custom RAG pipeline to answer questions from the Acity Student Handbook:
 
-         1. **Document Loading**: Load and extract text from the handbook PDF.
-         2. **Text Chunking**: Split the extracted text into overlapping chunks (~500 tokens).
-         3. **Embedding Generation**: Convert each chunk into vector embeddings with `HuggingFaceEmbeddings`.
-         4. **Vector Storage**: Store embeddings in a FAISS index for fast similarity search.
-         5. **Query Embedding**: Embed the user’s question.
-         6. **Similarity Search**: Retrieve the top‑k most relevant chunks.
-         7. **Prompt Assembly**: Combine retrieved chunks + question into a prompt.
-         8. **LLM Generation**: Generate the answer using Mistral‑7B‑Instruct, constrained to the retrieved context.
-         """)
-        
-        # Add the custom architecture diagram
+        1. **Document Loading**: Extract raw text from the handbook PDF using PyPDF.
+        2. **Text Chunking**: Split the text into overlapping chunks (~500 words).
+        3. **Embedding Generation**: Generate vector embeddings using a HuggingFace model.
+        4. **Vector Indexing**: Store chunk embeddings in a FAISS vector index.
+        5. **Query Embedding**: Convert the user's question into an embedding.
+        6. **Similarity Search**: Retrieve top‑k relevant chunks based on vector similarity.
+        7. **Prompt Construction**: Assemble context + query into a prompt.
+        8. **Answer Generation**: Use Mistral-7B-Instruct to generate a response based on retrieved content.
+        """)
         st.image("rag_architecture.png", caption="RAG Architecture for Student Handbook Q&A")
-    
+
     # Methodology explanation
     with st.expander("Methodology"):
         st.markdown("""
-         ### Methodology: RAG Pipeline with Acity Student Handbook
+        ### Methodology: RAG Pipeline with Acity Student Handbook
 
         #### 1. Text Extraction
-        - Extract raw text from the PDF using `extract_text_from_pdf()`.
+        - Extracts text using `extract_text_from_pdf()` via PyPDF.
 
         #### 2. Text Chunking
-        - Split the text into overlapping ~500 token chunks using `RecursiveCharacterTextSplitter` to retain context.
+        - Splits text into ~500-word chunks using a custom `split_text()` function with overlap.
 
         #### 3. Embedding & Indexing
-        - Convert chunks into embeddings using `HuggingFaceEmbeddings`.
-        - Store these embeddings in a FAISS index via `create_vector_store()`.
+        - Uses a HuggingFace embedding model (e.g., `all-MiniLM-L6-v2`) to generate vector representations of each chunk.
+        - Stores embeddings in a FAISS index using `create_vector_store()`.
 
-        #### 4. Retrieval
-        - Embed the user's query and retrieve top-k relevant chunks using `get_retriever()`.
-
-        #### 5. Prompt Construction & Generation
-        - Assemble a prompt with the query and relevant chunks.
-        - Generate answer via `rag_pipeline()` using the Mistral-7B-Instruct model.
-                    
+        #### 4. Retrieval & Generation
+        - Embeds user query and finds similar chunks using FAISS.
+        - `rag_pipeline()` assembles a prompt from top-k chunks and sends it to the Mistral-7B-Instruct API.
         """)
-        
-        
-   # Get file path
+
+    # Get file path
     script_dir = os.path.dirname(os.path.abspath(__file__))
     pdf_path = os.path.join(script_dir, "data", "handbook.pdf")
-    
-    # Check if file exists
+
     if not os.path.exists(pdf_path):
         st.error(f"PDF not found at path: {pdf_path}")
         st.write("Current working directory: " + os.getcwd())
         st.stop()
-    
-    # Initialization (should use caching or session state)
+
+    # Cache vector store in session
     if 'vector_store' not in st.session_state:
         with st.spinner("Loading student handbook... This may take a minute"):
             handbook_text = extract_text_from_pdf(pdf_path)
             chunks = split_text(handbook_text)
             st.session_state.vector_store = create_vector_store(chunks)
-            st.session_state.retriever = get_retriever(st.session_state.vector_store)
-    
-    # User input
+
+    # User query input
     query = st.text_input("Ask a question about student policies:")
-    
+
     if query:
         with st.spinner("Searching handbook and generating answer..."):
-             response_mistral = rag_pipeline(query, st.session_state.retriever)
-            
-            # Extract just the response part 
-        if "[/INST]" in response_mistral:
-            response_mistral = response_mistral.split("[/INST]")[1].strip()
-            if response_mistral.startswith("</s>"):
-                response_mistral = response_mistral.replace("</s>", "", 1).strip()
+            response_mistral = rag_pipeline(query, st.session_state.vector_store)
 
-       
-        
+            # Clean up response formatting
+            if "[/INST]" in response_mistral:
+                response_mistral = response_mistral.split("[/INST]")[1].strip()
+                if response_mistral.startswith("</s>"):
+                    response_mistral = response_mistral.replace("</s>", "", 1).strip()
+
         st.write("### Query Response")
         st.success(response_mistral)
 
         st.divider()
+
 
 
 
