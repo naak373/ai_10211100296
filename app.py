@@ -12,7 +12,7 @@ import tempfile
 
 
 # Import utility modules
-from utils.llm import extract_text_from_pdf, split_text, create_vector_store, get_retriever, rag_pipeline
+from utils.llm import extract_text_from_pdf, split_text, create_vector_store,rag_pipeline
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import confusion_matrix
 import tensorflow as tf
