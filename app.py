@@ -6,6 +6,8 @@ import seaborn as sns
 import os
 import re
 import seaborn as sns
+import joblib
+import tempfile
 
 
 
@@ -19,6 +21,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, confusion_matrix
 
 
 # Set page configuration
@@ -230,9 +233,9 @@ elif page == "Clustering":
 
 # Neural Network Section
 elif page == "Neural Network":
+
     st.header("Neural Network Training")
 
-    # File uploader
     uploaded_file = st.file_uploader("Upload CSV file for neural network training", type="csv")
 
     if uploaded_file is not None:
@@ -240,7 +243,6 @@ elif page == "Neural Network":
         st.write("### Data Preview")
         st.dataframe(df.head())
 
-        # Select columns
         target_column = st.selectbox("Select the target variable", df.columns)
         feature_columns = st.multiselect(
             "Select feature variables",
@@ -249,11 +251,9 @@ elif page == "Neural Network":
         )
 
         if feature_columns and target_column:
-            # Preprocessing
             X = df[feature_columns].copy()
             y = df[target_column].copy()
 
-            # Identify classification task
             is_classification = y.dtype == 'object' or len(np.unique(y)) < 10
 
             # Handle missing values
@@ -263,19 +263,16 @@ elif page == "Neural Network":
                 else:
                     X[col] = X[col].fillna(X[col].mode()[0])
 
-            # Store original categorical values
             categorical_maps = {}
             for col in X.columns:
                 if X[col].dtype == 'object':
-                    le = LabelEncoder()
-                    X[col] = le.fit_transform(X[col])
-                    categorical_maps[col] = le.classes_
+                    le_feat = LabelEncoder()
+                    X[col] = le_feat.fit_transform(X[col])
+                    categorical_maps[col] = le_feat.classes_
 
-            # Scale
             scaler = StandardScaler()
             X_scaled = scaler.fit_transform(X)
 
-            # Encode target
             le = None
             n_classes = None
             if is_classification:
@@ -285,10 +282,8 @@ elif page == "Neural Network":
                 if n_classes > 2:
                     y = tf.keras.utils.to_categorical(y)
 
-            # Split
             X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
 
-            # Model config
             st.write("### Model Configuration")
             col1, col2 = st.columns(2)
             with col1:
@@ -298,7 +293,6 @@ elif page == "Neural Network":
                 learning_rate = st.select_slider("Learning rate", options=[0.001, 0.01, 0.1], value=0.01)
                 hidden_layers = st.slider("Hidden layers", 1, 5, 2)
 
-            # Build model
             model = Sequential()
             model.add(Dense(64, activation='relu', input_shape=(X_train.shape[1],)))
             for _ in range(hidden_layers - 1):
@@ -321,7 +315,6 @@ elif page == "Neural Network":
             model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
                           loss=loss, metrics=metrics)
 
-            # Train model
             if st.button("Train Model"):
                 st.write("### Training Progress")
                 progress_bar = st.progress(0)
@@ -354,12 +347,12 @@ elif page == "Neural Network":
 
                 if is_classification:
                     st.metric("Test Accuracy", f"{test_results[1]:.4f}")
-                    if n_classes == 2:
-                        y_pred = (model.predict(X_test) > 0.5).astype(int)
-                        y_true = y_test
-                    else:
-                        y_pred = np.argmax(model.predict(X_test), axis=1)
-                        y_true = np.argmax(y_test, axis=1)
+                    y_pred = (model.predict(X_test) > 0.5).astype(int) if n_classes == 2 else np.argmax(model.predict(X_test), axis=1)
+                    y_true = y_test if n_classes == 2 else np.argmax(y_test, axis=1)
+
+                    report = classification_report(y_true, y_pred, output_dict=True)
+                    st.write("### Classification Report")
+                    st.dataframe(pd.DataFrame(report).transpose())
 
                     cm = confusion_matrix(y_true, y_pred)
                     fig, ax = plt.subplots(figsize=(8, 6))
@@ -378,13 +371,58 @@ elif page == "Neural Network":
                     ax.set_title("Actual vs Predicted")
                     st.pyplot(fig)
 
+                # Show final training curves
+                st.write("### Final Training Curves")
+                history_df = pd.DataFrame(history.history)
+
+                fig_loss, ax1 = plt.subplots()
+                ax1.plot(history_df['loss'], label='Train Loss')
+                ax1.plot(history_df['val_loss'], label='Val Loss')
+                ax1.set_title("Loss Curve")
+                ax1.set_xlabel("Epochs")
+                ax1.set_ylabel("Loss")
+                ax1.legend()
+                st.pyplot(fig_loss)
+
+                if 'accuracy' in history_df.columns:
+                    fig_acc, ax2 = plt.subplots()
+                    ax2.plot(history_df['accuracy'], label='Train Accuracy')
+                    ax2.plot(history_df['val_accuracy'], label='Val Accuracy')
+                    ax2.set_title("Accuracy Curve")
+                    ax2.set_xlabel("Epochs")
+                    ax2.set_ylabel("Accuracy")
+                    ax2.legend()
+                    st.pyplot(fig_acc)
+
+                elif 'mae' in history_df.columns:
+                    fig_mae, ax3 = plt.subplots()
+                    ax3.plot(history_df['mae'], label='Train MAE')
+                    ax3.plot(history_df['val_mae'], label='Val MAE')
+                    ax3.set_title("MAE Curve")
+                    ax3.set_xlabel("Epochs")
+                    ax3.set_ylabel("MAE")
+                    ax3.legend()
+                    st.pyplot(fig_mae)
+
+                # Save model + components
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".h5") as tmp_model, \
+                     tempfile.NamedTemporaryFile(delete=False, suffix=".pkl") as tmp_scaler:
+                    model.save(tmp_model.name)
+                    joblib.dump(scaler, tmp_scaler.name)
+                    st.download_button("Download Trained Model (.h5)", open(tmp_model.name, "rb"), "trained_model.h5")
+                    st.download_button("Download Scaler", open(tmp_scaler.name, "rb"), "scaler.pkl")
+                    if is_classification and le is not None:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".pkl") as tmp_le:
+                            joblib.dump(le, tmp_le.name)
+                            st.download_button("Download Label Encoder", open(tmp_le.name, "rb"), "label_encoder.pkl")
+
                 # Custom Predictions
                 st.write("### Make Custom Predictions")
                 input_data = {}
                 for col in feature_columns:
                     if col in categorical_maps:
-                        input_data[col] = st.selectbox(f"Select value for {col}", categorical_maps[col])
-                        input_val = np.where(categorical_maps[col] == input_data[col])[0][0]
+                        user_input = st.selectbox(f"Select value for {col}", categorical_maps[col])
+                        input_val = np.where(categorical_maps[col] == user_input)[0][0]
                     else:
                         min_val = float(df[col].min())
                         max_val = float(df[col].max())
@@ -408,6 +446,7 @@ elif page == "Neural Network":
                     st.success(f"Predicted Value: {prediction[0][0]:.4f}")
 
         st.divider()
+
 
 
 # LLM section
