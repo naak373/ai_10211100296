@@ -415,6 +415,7 @@ elif page == "Neural Network":
                             st.download_button("Download Label Encoder", open(tmp_le.name, "rb"), "label_encoder.pkl")
 
                 # Custom Predictions
+            
                 st.write("### Make Custom Predictions")
                 input_data = {}
                 for col in feature_columns:
@@ -424,7 +425,12 @@ elif page == "Neural Network":
                     else:
                         min_val = float(df[col].min())
                         max_val = float(df[col].max())
-                        input_val = st.slider(f"Select value for {col}", min_val, max_val, (min_val + max_val) / 2)
+                        if min_val == max_val:
+                            input_val = min_val
+                            st.write(f"{col} has a constant value: {min_val}")
+                        else:
+                            input_val = st.slider(f"Select value for {col}", min_val, max_val, (min_val + max_val) / 2)
+
                     input_data[col] = input_val
 
                 input_array = np.array([[input_data[col] for col in feature_columns]])
