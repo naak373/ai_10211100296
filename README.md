@@ -2,6 +2,7 @@
 
 Developed by: Michelle Naa Kwarley Owoo
 Index Number: 10211100296
+Deployed Solution Link:https://ai10211100296-kekp3v7gluvwtq22ddddn6.streamlit.app/
 
 ## Project Overview
 
