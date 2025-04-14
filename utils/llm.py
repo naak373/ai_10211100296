@@ -54,6 +54,7 @@ def create_vector_store(chunks):
     dim = embeddings.shape[1]
     index = faiss.IndexFlatL2(dim)
     index.add(embeddings)
+    st.session_state.chunks = chunks
     return {"index": index, "texts": chunks, "model": model, "tokenizer": tokenizer}
 
 # Set up retriever
@@ -96,7 +97,7 @@ def query_mistral(prompt):
 def rag_pipeline(query, vector_store):
 
     # Retrieve relevant chunks
-    chunks = get_top_k(query, vector_store)
+    chunks = get_top_k(query, vector_store, k=4)
     
     # Prepare context
     context = "\n\n".join(chunks)

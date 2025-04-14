@@ -542,6 +542,7 @@ elif page == "LLM Solution":
             handbook_text = extract_text_from_pdf(pdf_path)
             chunks = split_text(handbook_text)
             st.session_state.vector_store = create_vector_store(chunks)
+            st.session_state.chunks = chunks
 
     # User query input
     query = st.text_input("Ask a question about student policies:")
@@ -551,6 +552,9 @@ elif page == "LLM Solution":
             from utils.llm import get_retriever  
             retriever = get_retriever(st.session_state.vector_store, k=4)
             docs = retriever(query)
+
+            st.session_state.chunks = docs
+            
             context = "\n\n".join([doc for doc in docs])
 
             from sentence_transformers import SentenceTransformer, util
@@ -580,10 +584,11 @@ elif page == "LLM Solution":
         st.metric("Cosine Similarity", f"{top_score:.2f}")
 
         st.write("### Source Section Preview")
-        st.code(st.session_state.chunks[top_index][:1000], language="markdown")
+        if "chunks" in st.session_state:
+            st.code(st.session_state.chunks[top_index][:1000], language="markdown")
 
-        with st.expander("🔍 View Full Retrieved Section"):
-            st.write(st.session_state.chunks[top_index])
+        else:
+            st.warning("No source section found. Try asking a question first.")
 
         st.divider()
 
