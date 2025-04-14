@@ -57,6 +57,17 @@ def create_vector_store(chunks):
     return {"index": index, "texts": chunks, "model": model, "tokenizer": tokenizer}
 
 # Set up retriever
+def get_retriever(vector_store, k=4):
+    def retrieve(query):
+        tokenizer = vector_store["tokenizer"]
+        model = vector_store["model"]
+        q_embed = embed_text([query], tokenizer, model)
+        D, I = vector_store["index"].search(q_embed, k)
+        results = [vector_store["texts"][i] for i in I[0]]
+        return results
+    return retrieve
+
+# Get top-k directly (for use outside dynamic retriever)
 def get_top_k(query, vector_store, k=3):
     tokenizer = vector_store["tokenizer"]
     model = vector_store["model"]

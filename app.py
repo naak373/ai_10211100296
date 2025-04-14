@@ -548,7 +548,8 @@ elif page == "LLM Solution":
 
     if query:
         with st.spinner("Searching handbook and generating answer..."):
-            retriever = st.session_state.vector_store.as_retriever(search_type="similarity", search_kwargs={"k": 4})
+            from utils.llm import get_retriever  
+            retriever = get_retriever(st.session_state.vector_store, k=4)
             docs = retriever.get_relevant_documents(query)
             context = "\n\n".join([doc.page_content for doc in docs])
 
