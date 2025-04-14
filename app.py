@@ -550,7 +550,7 @@ elif page == "LLM Solution":
         with st.spinner("Searching handbook and generating answer..."):
             from utils.llm import get_retriever  
             retriever = get_retriever(st.session_state.vector_store, k=4)
-            docs = retriever.get_relevant_documents(query)
+            docs = retriever(query)
             context = "\n\n".join([doc.page_content for doc in docs])
 
             from sentence_transformers import SentenceTransformer, util
