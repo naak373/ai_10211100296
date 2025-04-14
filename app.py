@@ -551,18 +551,22 @@ elif page == "LLM Solution":
             from utils.llm import get_retriever  
             retriever = get_retriever(st.session_state.vector_store, k=4)
             docs = retriever(query)
-            context = "\n\n".join([doc.page_content for doc in docs])
+            context = "\n\n".join([doc for doc in docs])
 
             from sentence_transformers import SentenceTransformer, util
-            embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+            @st.cache_resource
+            def get_embedder():
+                return SentenceTransformer("all-MiniLM-L6-v2")
+        
+            embed_model = get_embedder()
             query_emb = embed_model.encode(query, convert_to_tensor=True)
-            doc_embs = embed_model.encode([doc.page_content for doc in docs], convert_to_tensor=True)
+            doc_embs = embed_model.encode(docs, convert_to_tensor=True)
 
             sims = util.cos_sim(query_emb, doc_embs)[0]
             top_score = float(sims.max().item())
             top_index = int(sims.argmax().item())
 
-            response_mistral = rag_pipeline(query, retriever)
+            response_mistral = rag_pipeline(query, st.session_state.vector_store)
 
             if "[/INST]" in response_mistral:
                 response_mistral = response_mistral.split("[/INST]")[1].strip()
