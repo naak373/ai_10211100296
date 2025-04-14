@@ -238,6 +238,13 @@ elif page == "Neural Network":
 
     if uploaded_file is not None:
         df = pd.read_csv(uploaded_file)
+
+        # Limit large datasets
+        MAX_ROWS = 10000
+        if df.shape[0] > MAX_ROWS:
+            st.warning(f"Dataset has {df.shape[0]} rows. Only the first {MAX_ROWS} will be used to improve performance.")
+            df = df.head(MAX_ROWS)
+
         st.write("### Data Preview")
         st.dataframe(df.head())
 
@@ -247,6 +254,7 @@ elif page == "Neural Network":
             [col for col in df.columns if col != target_column],
             default=[col for col in df.columns if col != target_column]
         )
+
 
         if feature_columns and target_column:
             X = df[feature_columns].copy()
@@ -291,6 +299,14 @@ elif page == "Neural Network":
                 learning_rate = st.select_slider("Learning rate", options=[0.001, 0.01, 0.1], value=0.01)
                 hidden_layers = st.slider("Hidden layers", 1, 5, 2)
 
+            # Adaptive network size
+            if X_train.shape[0] > 10000:
+                layer1 = 128
+                layer2 = 64
+            else:
+                layer1 = 64
+                layer2 = 32
+
             model = Sequential()
             model.add(Dense(64, activation='relu', input_shape=(X_train.shape[1],)))
             for _ in range(hidden_layers - 1):
@@ -330,6 +346,20 @@ elif page == "Neural Network":
                             metric_chart.add_rows({'accuracy': [logs['accuracy']], 'val_accuracy': [logs['val_accuracy']]})
                         elif 'mae' in logs:
                             metric_chart.add_rows({'mae': [logs['mae']], 'val_mae': [logs['val_mae']]})
+
+                try:
+                    history = model.fit(
+                        X_train, y_train,
+                        validation_data=(X_test, y_test),
+                        epochs=epochs,
+                        batch_size=batch_size,
+                        callbacks=[StreamlitCallback()],
+                        shuffle=True,
+                        verbose=0
+                    )
+                except Exception as e:
+                    st.error(f"⚠️ Training failed: {str(e)}")
+                    st.stop()
 
                 history = model.fit(
                     X_train, y_train,
