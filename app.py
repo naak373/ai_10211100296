@@ -21,6 +21,8 @@ from tensorflow.keras.layers import Dense
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix
+from sentence_transformers import SentenceTransformer, util
+
 
 
 # Set page configuration
@@ -546,16 +548,37 @@ elif page == "LLM Solution":
 
     if query:
         with st.spinner("Searching handbook and generating answer..."):
-            response_mistral = rag_pipeline(query, st.session_state.vector_store)
+            retriever = st.session_state.vector_store.as_retriever(search_type="similarity", search_kwargs={"k": 4})
+            docs = retriever.get_relevant_documents(query)
+            context = "\n\n".join([doc.page_content for doc in docs])
 
-            # Clean up response formatting
+            from sentence_transformers import SentenceTransformer, util
+            embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+            query_emb = embed_model.encode(query, convert_to_tensor=True)
+            doc_embs = embed_model.encode([doc.page_content for doc in docs], convert_to_tensor=True)
+
+            sims = util.cos_sim(query_emb, doc_embs)[0]
+            top_score = float(sims.max().item())
+            top_index = int(sims.argmax().item())
+
+            response_mistral = rag_pipeline(query, retriever)
+
             if "[/INST]" in response_mistral:
                 response_mistral = response_mistral.split("[/INST]")[1].strip()
-                if response_mistral.startswith("</s>"):
-                    response_mistral = response_mistral.replace("</s>", "", 1).strip()
+            if response_mistral.startswith("</s>"):
+                response_mistral = response_mistral.replace("</s>", "", 1).strip()
 
         st.write("### Query Response")
         st.success(response_mistral)
+
+        st.write("### Confidence Score")
+        st.metric("Cosine Similarity", f"{top_score:.2f}")
+
+        st.write("### Source Section Preview")
+        st.code(st.session_state.chunks[top_index][:1000], language="markdown")
+
+        with st.expander("🔍 View Full Retrieved Section"):
+            st.write(st.session_state.chunks[top_index])
 
         st.divider()
 
